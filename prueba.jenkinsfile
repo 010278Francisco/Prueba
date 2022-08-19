@@ -1,0 +1,59 @@
+def genaralvars () {
+
+    env.GIT_REPO = 'https://github.com/010278Francisco/Prueba.git'
+    env.GIT_BRANCH = 'main'
+    env.DOCKER_REPO = 'francisco012'
+    CONTAINER_PORT= '83'
+
+}
+
+
+pipeline {
+    agent any
+    tools {
+       terraform 'terraform-2'
+    }
+    stages {
+        stage ("Extraer las Variables") {
+            steps {
+                genaralvars()
+            }
+        }
+        
+        stage ("Verificar si existe el contenedor") {
+            steps {
+                    script {
+                        DOCKERID = sh (script: "docker ps -f publish=${CONTAINER_PORT} -q", returnStdout: true).trim()
+                        if  ( DOCKERID !="" ) {
+                            if (fileExists('terraform.tfstate')) {
+                                sh "terraform destroy  -var=\"container_port=${CONTAINER_PORT}\" -var=\"reponame=${env.DOCKER_REPO}\" --target docker_alpine --auto-approve"
+                            }
+                            else {
+                                sh "docker stop ${DOCKERID}"
+                            }
+                        }
+                }
+            }
+        }
+        
+        stage('Format terraform') {
+            steps{
+                sh 'terraform fmt'
+            }
+        }
+        stage('Terraform init') {
+            steps{
+                sh 'terraform init -upgrade'
+            }
+        }
+        stage('Aplicar terraform') {
+            steps{
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'francisco-ssh-server01', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                    sh "terraform apply --auto-approve"
+                }
+                script {
+                    PUBLIC_IP_EC2 = sh (script: "terraform output instance_public_ip", returnStdout:true).trim()
+                }
+                echo "${PUBLIC_IP_EC2}"
+            }
+        }
