@@ -1,12 +1,11 @@
 def genaralvars () {
 
-    env.GIT_REPO = 'https://github.com/010278Francisco/Prueba.git'
-    env.GIT_BRANCH = 'main'
+    env.GIT_REPO = 'https://github.com/010278Francisco/Prueba.git'       
+    env.GIT_BRANCH = 'main'         
     env.DOCKER_REPO = 'francisco012'
     CONTAINER_PORT= '83'
 
 }
-
 
 pipeline {
     agent any
@@ -14,43 +13,46 @@ pipeline {
        terraform 'terraform-2'
     }
     stages {
-        stage ("Extraer las Variables") {
+        stage ("Set Variables") {
             steps {
                 genaralvars()
             }
         }
-        
-        stage ("Verificar si existe el contenedor") {
+
+
+
+ stage ("Verify If Infra exists") {
             steps {
                     script {
-                        DOCKERID = sh (script: "docker ps -f publish=${CONTAINER_PORT} -q", returnStdout: true).trim()
-                        if  ( DOCKERID !="" ) {
-                            if (fileExists('terraform.tfstate')) {
-                                sh "terraform destroy  -var=\"container_port=${CONTAINER_PORT}\" -var=\"reponame=${env.DOCKER_REPO}\" --target docker_alpine --auto-approve"
+                        if (fileExists('terraform.tfstate')) {
+                            withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                                sh "terraform destroy --auto-approve"
+                               
                             }
-                            else {
-                                sh "docker stop ${DOCKERID}"
-                            }
+                        }
+                        else {
+                            sh "echo no existe tfstate"
                         }
                 }
             }
         }
         
-        stage('checar el formato de terraform') {
+        
+        stage('terraform format check') {
             steps{
                 sh 'terraform fmt'
             }
         }
-        stage('Inicializar terraform') {
+        stage('terraform Init') {
             steps{
-                sh 'terraform init -upgrade'
+                sh 'terraform init'
             }
         }
         stage('terraform apply') {
             steps{
                 withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
                     sh 'terraform apply --auto-approve'
-                    //sh "terraform apply -var=\"container_port=${CONTAINER_PORT}\" -var=\"reponame=${env.DOCKER_REPO}\" --auto-approve"
+                    
                 }
                 script {
                     PUBLIC_IP_EC2 = sh (script: "terraform output instance_public_ip", returnStdout:true).trim()
@@ -58,51 +60,48 @@ pipeline {
                 echo "${PUBLIC_IP_EC2}"
             }
         }
-
-
-        stage('Cambiar contenido en inventario') {
+        stage('Change inventory content') {
             steps{
-                sh "echo $PUBLIC_IP_EC2 > francisco_inventario.hosts"
-            }
-        }     
-        stage('Esperar 30 segundos') {
-            steps {
-                sleep time:30, unit: 'SECONDS'
+                sh "echo $PUBLIC_IP_EC2 > mi-inventario.hosts"
             }
         }
-       stage('Connect to Host and install Packages') {
+        stage('Wait 1 minute') {
             steps {
-                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: '	SSH-diego-retoF', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-install-packages.yml'
+                sleep time:1, unit: 'MINUTES'
+            }
+        }
+        stage('Connect to Host and install Packages') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'mi-inventario.hosts', playbook: 'playbook-install-packages.yml'
             }
         }
         stage('Connect to Host and execute a command') {
             steps {
-                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-execute-command-packages.yml'
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'mi-inventario.hosts', playbook: 'playbook-execute-command-packages.yml'
             }
         }
         stage('Connect to Host and install Docker') {
             steps {
-                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: '	francisco-ssh-server01', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-install-docker.yml'
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'mi-inventario.hosts', playbook: 'playbook-install-docker.yml'
             }
         }
-      
-        stage ("Creacion de DockerFile") {
+        stage('Create a Dockerfile') {
             steps {
                 sh '''
                     cat <<EOT > Dockerfile
-                    FROM alpine:latest
+                    FROM nginx:latest
                 '''
             }
         }
-        stage ("Construir Imagen") {
+        stage('Build image') {
             steps {
                 sh "docker build -t ${env.DOCKER_REPO}/${JOB_BASE_NAME}:${BUILD_NUMBER} ."
             }
         }
-        stage ("Publicar imagen") {
+        stage('Publish image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker', passwordVariable: 'docker_pass',usernameVariable: 'docker_user')]) {
-                    sh "docker login -u $docker_user -p $docker_pass"
+                withCredentials([usernamePassword(credentialsId: 'docker', passwordVariable: 'docker_pas', usernameVariable: 'docker_us')]) {
+                    sh "docker login -u $docker_us -p $docker_pas"
                     sh "docker push ${env.DOCKER_REPO}/${JOB_BASE_NAME}:${BUILD_NUMBER}"
                 }
             }
@@ -124,8 +123,8 @@ pipeline {
         }
         stage('Executing Terraform Destroy') {
             steps{
-                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
-                    sh 'terraform apply --auto-approve'
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'chrisaws', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                    sh 'terraform destroy --auto-approve'
 
                 }
                 
@@ -134,4 +133,7 @@ pipeline {
         }
     }
 }
+
+
+
 
