@@ -19,7 +19,7 @@ resource "aws_instance" "prueba" {
   ami           = "ami-052efd3df9dad4825"
   instance_type = "t2.micro"
   security_groups= ["launch-wizard-4"]
-  key_name= "ssh-proyecto"
+  key_name= "name"
   
 
   tags = {
