@@ -18,7 +18,7 @@ provider "aws" {
 resource "aws_instance" "prueba" {
   ami           = "ami-052efd3df9dad4825"
   instance_type = "t2.micro"
-  security_groups= ["launch-wizard-4"]
+  security_groups= ["launch-wizard-1"]
   key_name= "name"
   
 
