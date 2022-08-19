@@ -36,12 +36,12 @@ pipeline {
             }
         }
         
-        stage('Format terraform') {
+        stage('checar el formato de terraform') {
             steps{
                 sh 'terraform fmt'
             }
         }
-        stage('Terraform init') {
+        stage('Inicializar terraform') {
             steps{
                 sh 'terraform init -upgrade'
             }
@@ -57,3 +57,79 @@ pipeline {
                 echo "${PUBLIC_IP_EC2}"
             }
         }
+
+        stage('Cambiar contenido en inventario') {
+            steps{
+                sh "echo $PUBLIC_IP_EC2 > francisco_inventario.hosts"
+            }
+        }     
+        stage('Esperar 30 segundos') {
+            steps {
+                sleep time:30, unit: 'SECONDS'
+            }
+        }
+       stage('Connect to Host and install Packages') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: '	SSH-diego-retoF', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-install-packages.yml'
+            }
+        }
+        stage('Connect to Host and execute a command') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-execute-command-packages.yml'
+            }
+        }
+        stage('Connect to Host and install Docker') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: '	francisco-ssh-server01', installation: 'ansible210', inventory: 'francisco_inventario.hosts', playbook: 'playbook-install-docker.yml'
+            }
+        }
+      
+        stage ("Creacion de DockerFile") {
+            steps {
+                sh '''
+                    cat <<EOT > Dockerfile
+                    FROM alpine:latest
+                '''
+            }
+        }
+        stage ("Construir Imagen") {
+            steps {
+                sh "docker build -t ${env.DOCKER_REPO}/${JOB_BASE_NAME}:${BUILD_NUMBER} ."
+            }
+        }
+        stage ("Publicar imagen") {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker', passwordVariable: 'docker_pass',usernameVariable: 'docker_user')]) {
+                    sh "docker login -u $docker_user -p $docker_pass"
+                    sh "docker push ${env.DOCKER_REPO}/${JOB_BASE_NAME}:${BUILD_NUMBER}"
+                }
+            }
+        }
+        stage ('Pull image') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'mi-inventario.hosts', playbook: 'playbook-pull-image.yml', extraVars: [ var_job_name: "${JOB_BASE_NAME}", var_build_number: "${BUILD_NUMBER}", var_docker_repo: "${env.DOCKER_REPO}",  var_container_port: "${CONTAINER_PORT}",var_ip: "${PUBLIC_IP_EC2}" ]
+            }
+        }
+        stage ('Run image') {
+            steps {
+                ansiblePlaybook become: true, colorized: true, extras: '-v', disableHostKeyChecking: true, credentialsId: 'francisco-ssh-server01', installation: 'ansible210', inventory: 'mi-inventario.hosts', playbook: 'playbook-run-image.yml', extraVars: [ var_job_name: "${JOB_BASE_NAME}", var_build_number: "${BUILD_NUMBER}", var_docker_repo: "${env.DOCKER_REPO}",  var_container_port: "${CONTAINER_PORT}",var_ip: "${PUBLIC_IP_EC2}" ]
+            }
+        }
+        stage('Manual Approval to Destroy the Infra') {
+            steps{
+                input "Proceed with destroy the Infra?"
+            }
+        }
+        stage('Executing Terraform Destroy') {
+            steps{
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                    sh 'terraform apply --auto-approve'
+
+                }
+                
+            }
+
+        }
+    }
+}
+
