@@ -48,4 +48,16 @@ pipeline {
                 sh 'terraform init'
             }
         }
-       
+         stage('terraform apply') {
+            steps{
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                    sh 'terraform apply --auto-approve'
+                    
+                }
+                script {
+                    PUBLIC_IP_EC2 = sh (script: "terraform output instance_public_ip", returnStdout:true).trim()
+                }
+                echo "${PUBLIC_IP_EC2}"
+            }
+        }
+        }
