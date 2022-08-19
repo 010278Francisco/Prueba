@@ -9,17 +9,14 @@ terraform {
   required_version = ">= 1.2.0"
 }
 
-
-
 provider "aws" {
-  profile = "deafault"
   region  = "us-east-1"
 }
 
 resource "aws_instance" "prueba" {
   ami           = "ami-090fa75af13c156b4"
   instance_type = "t2.micro"
-  security_groups= ["launch-wizard-3"]
+  security_groups= ["launch-wizard-3","default"]
   key_name= "name"
   
 
