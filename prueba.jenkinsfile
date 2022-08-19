@@ -46,10 +46,11 @@ pipeline {
                 sh 'terraform init -upgrade'
             }
         }
-        stage('Aplicar terraform') {
+        stage('terraform apply') {
             steps{
-                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'francisco-ssh-server01', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
-                    sh "terraform apply --auto-approve"
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws-francisco', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                    sh 'terraform apply --auto-approve'
+                    //sh "terraform apply -var=\"container_port=${CONTAINER_PORT}\" -var=\"reponame=${env.DOCKER_REPO}\" --auto-approve"
                 }
                 script {
                     PUBLIC_IP_EC2 = sh (script: "terraform output instance_public_ip", returnStdout:true).trim()
@@ -57,6 +58,7 @@ pipeline {
                 echo "${PUBLIC_IP_EC2}"
             }
         }
+
 
         stage('Cambiar contenido en inventario') {
             steps{
