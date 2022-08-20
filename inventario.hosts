@@ -1,1 +1,2 @@
 [webserver-aws]
+35.165.79.66 ansible_user=ubuntu 
